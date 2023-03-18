@@ -1,7 +1,7 @@
 {
   "name": "tasks",
   "version": "1.0.0",
-  "description": "Convert Typebox to Mongoose schema definition",
+  "description": "Asynchronous task hook for React",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "files": [
