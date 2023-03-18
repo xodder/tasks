@@ -2,14 +2,14 @@ import defaultsDeep from 'lodash.defaultsdeep';
 import React from 'react';
 import useRerender from './utils/use-rerender';
 
+type Maybe<T> = T | undefined;
+
 export type TaskError<TResult = unknown> = Error & {
   retryable: boolean;
   reason?: string;
   message: string;
   retry?: () => Promise<TaskPerformFuncResult<TResult>>;
 };
-
-type TaskRollbackContext = Record<any, any> | (() => any) | void;
 
 type TaskId = string;
 type TaskStatus = 'idle' | 'running' | 'success' | 'error';
@@ -21,17 +21,21 @@ interface TaskState<TResult> {
   error: TaskError<TResult> | null;
 }
 
-export type TaskHandlers<TInput = unknown, TResult = unknown> = {
-  onStart?: (inputVariables: TInput) => TaskRollbackContext;
+export type TaskHandlers<
+  TInput = unknown,
+  TResult = unknown,
+  TRollback = unknown
+> = {
+  onStart?: (inputVariables: TInput) => Maybe<TRollback>;
   onSuccess?: (
     result: TResult,
     inputVariables: TInput,
-    rollbackContext: TaskRollbackContext
+    rollbackContext: Maybe<TRollback>
   ) => any;
   onError?: (
     error: TaskError<TResult>,
     inputVariables: TInput,
-    rollbackContext: TaskRollbackContext
+    rollbackContext: Maybe<TRollback>
   ) => void;
   onComplete?: (inputVariables: TInput) => void;
 };
@@ -45,17 +49,21 @@ export type TaskPerformFunc<TInput = unknown, TResult = unknown> = (
   inputVariables?: TInput
 ) => Promise<TaskPerformFuncResult<TResult>>;
 
-export interface TaskDefObj<TInput = unknown, TResult = unknown> {
+export interface TaskDefObj<
+  TInput = unknown,
+  TResult = unknown,
+  TRollback = unknown
+> {
   id: TaskId;
   execute: (inputVariables?: TInput) => Promise<TResult>;
   persistent?: boolean;
   getDataToPersist?: (result: TResult) => any;
-  handlers?: TaskHandlers<TInput, TResult>;
+  handlers?: TaskHandlers<TInput, TResult, TRollback>;
 }
 
-export type TaskDef<TInput = unknown, TResult = unknown> =
-  | TaskDefObj<TInput, TResult>
-  | ((inputVariables?: TInput) => TaskDefObj<TInput, TResult>);
+export type TaskDef<TInput = unknown, TResult = unknown, TRollback = unknown> =
+  | TaskDefObj<TInput, TResult, TRollback>
+  | ((inputVariables?: TInput) => TaskDefObj<TInput, TResult, TRollback>);
 
 export type UseTaskResult<
   TInput = unknown,
@@ -81,7 +89,7 @@ const __defaultTaskState = {
   isRunning: false,
 };
 
-class Task<TInput = unknown, TResult = unknown> {
+class Task<TInput = unknown, TResult = unknown, TRollback = unknown> {
   id: TaskId;
   state: TaskState<TResult>;
   _observers: TaskObserver<TResult>[] = [];
@@ -100,10 +108,13 @@ class Task<TInput = unknown, TResult = unknown> {
     this._observers.splice(this._observers.indexOf(observer), 1);
   }
 
-  async runWith(def: TaskDefObj<TInput, TResult>, variables?: TInput) {
+  async runWith(
+    def: TaskDefObj<TInput, TResult, TRollback>,
+    variables?: TInput
+  ) {
     this._updateState({ status: TaskStatus.RUNNING });
 
-    const rollbackContext = def.handlers?.onStart?.(variables!) || {};
+    const rollbackContext = def.handlers?.onStart?.(variables!);
 
     try {
       const result = await def.execute(variables);
@@ -166,19 +177,23 @@ class Task<TInput = unknown, TResult = unknown> {
   }
 }
 
-class TaskManager<TInput, TResult> {
-  _tasks: Record<TaskId, Task<TInput, TResult>> = {};
+class TaskManager {
+  _tasks: Record<TaskId, Task> = {};
 
   has(taskId: TaskId) {
     return this._tasks[taskId];
   }
 
-  get(taskId: TaskId) {
-    return this._tasks[taskId];
+  get<TInput = unknown, TResult = unknown, TRollback = unknown>(
+    taskId: TaskId
+  ) {
+    return this._tasks[taskId] as Task<TInput, TResult, TRollback>;
   }
 
-  add(task: Task<TInput, TResult>) {
-    this._tasks[task.id] = task;
+  add<TInput = unknown, TResult = unknown, TRollback = unknown>(
+    task: Task<TInput, TResult, TRollback>
+  ) {
+    this._tasks[task.id] = task as Task;
   }
 
   maybeRemove(taskId: TaskId) {
@@ -196,22 +211,26 @@ class TaskManager<TInput, TResult> {
   }
 }
 
-const taskManager = new TaskManager<any, any>();
+const taskManager = new TaskManager();
 
-function getOrCreateTask<TInput = unknown, TResult = unknown>(taskId: TaskId) {
-  let task = taskManager.get(taskId);
-  if (!task) {
-    task = new Task<TInput, TResult>(taskId);
-    taskManager.add(task);
-  }
-  return task;
+function getOrCreateTask<
+  TInput = unknown,
+  TResult = unknown,
+  TRollback = unknown
+>(taskId: TaskId) {
+  if (!taskManager.has(taskId))
+    taskManager.add(new Task<TInput, TResult, TRollback>(taskId));
+
+  return taskManager.get<TInput, TResult, TRollback>(taskId);
 }
 
-export function useTaskState<TInput = unknown, TResult = unknown>(
-  taskId: TaskId
-): TaskState<TResult> {
+export function useTaskState<
+  TInput = unknown,
+  TResult = unknown,
+  TRollback = unknown
+>(taskId: TaskId): TaskState<TResult> {
   const rerender = useRerender();
-  const task = getOrCreateTask<TInput, TResult>(taskId);
+  const task = getOrCreateTask<TInput, TResult, TRollback>(taskId);
 
   const observerRef = React.useRef<TaskObserver<TResult>>(() => rerender());
 
@@ -249,12 +268,13 @@ const defaultTaskDef = {
   },
 };
 
-function runTask<TInput = unknown, TResult = unknown>(
-  taskDef: TaskDefObj<TInput, TResult>,
+function runTask<TInput = unknown, TResult = unknown, TRollback = unknown>(
+  taskDef: TaskDefObj<TInput, TResult, TRollback>,
   variables?: TInput
 ) {
   const task = getOrCreateTask(taskDef.id);
   const actualDef = defaultsDeep(taskDef, defaultTaskDef);
+
   return task.runWith(actualDef, variables);
 }
 
@@ -263,9 +283,11 @@ type RetryableError<TResult = unknown> = Error & {
   retry: () => Promise<TaskPerformFuncResult<TResult>>;
 };
 
-export function usePerformTask<TInput = unknown, TResult = unknown>(
-  taskDef: TaskDef<TInput, TResult>
-) {
+export function usePerformTask<
+  TInput = unknown,
+  TResult = unknown,
+  TRollback = unknown
+>(taskDef: TaskDef<TInput, TResult, TRollback>) {
   const perform = React.useCallback(
     async (variables?: TInput) => {
       const result: unknown[] = [];
@@ -297,15 +319,19 @@ export function usePerformTask<TInput = unknown, TResult = unknown>(
   return perform;
 }
 
-export function useTask<TInput = unknown, TResult = unknown>(
-  taskDef: TaskDefObj<TInput, TResult>
+export function useTask<
+  TInput = unknown,
+  TResult = unknown,
+  TRollback = unknown
+>(
+  taskDef: TaskDefObj<TInput, TResult, TRollback>
 ): UseTaskResult<TInput, TResult> {
   if (!taskDef.id) {
     throw new Error('task must have an id');
   }
 
   const state = useTaskState<TInput, TResult>(taskDef.id);
-  const perform = usePerformTask<TInput, TResult>(taskDef);
+  const perform = usePerformTask<TInput, TResult, TRollback>(taskDef);
   const reset = React.useCallback(() => {
     getOrCreateTask(taskDef.id).reset();
   }, [taskDef.id]);
