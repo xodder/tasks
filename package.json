@@ -1,5 +1,5 @@
 {
-  "name": "tasks",
+  "name": "@xod/tasks",
   "version": "1.0.0",
   "description": "Asynchronous task hook for React",
   "main": "dist/index.js",
