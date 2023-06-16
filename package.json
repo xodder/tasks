@@ -23,13 +23,13 @@
     "lint": "eslint --ext .js,.ts,.tsx"
   },
   "dependencies": {
-    "lodash.defaultsdeep": "^4.6.1"
+    "lodash": "^4.17.21"
   },
   "peerDependencies": {
     "react": "^16.8.0 || ^17.0.0 || ^18.0.0"
   },
   "devDependencies": {
-    "@types/lodash.defaultsdeep": "^4.6.7",
+    "@types/lodash": "^4.14.191",
     "@types/node": "^18.11.10",
     "@types/react": "18.0.26",
     "@typescript-eslint/eslint-plugin": "^5.47.1",

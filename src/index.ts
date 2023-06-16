@@ -1,4 +1,4 @@
-import defaultsDeep from 'lodash.defaultsdeep';
+import defaultsDeep from 'lodash/defaultsdeep';
 import React from 'react';
 import useRerender from './utils/use-rerender';
 
