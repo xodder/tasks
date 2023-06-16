@@ -19,7 +19,7 @@
   },
   "homepage": "https://github.com/xodder/tasks#readme",
   "scripts": {
-    "prepublish": "tsc",
+    "install": "npx tsc",
     "lint": "eslint --ext .js,.ts,.tsx"
   },
   "dependencies": {
