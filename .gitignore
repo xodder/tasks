@@ -19,7 +19,7 @@ node_modules/
 *.tgz
 
 # Build generated files
-dist
+# dist
 
 # dotenv environment variables file
 .env
